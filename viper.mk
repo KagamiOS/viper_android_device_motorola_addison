@@ -33,9 +33,6 @@ PRODUCT_BUILD_PROP_OVERRIDES += \
     PRIVATE_BUILD_DESC="addison-user 7.0 NPN25.137-24-1 1 release-keys" \
     PRODUCT_NAME="Moto Z Play"
 
-# Support Poison for compile
-export PURE_POISON=true
-
 # Support Official
 export VIPER_BUILD_TYPE=Official
 
