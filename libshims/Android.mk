@@ -32,10 +32,11 @@ LOCAL_MODULE := libshim_camera
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_SHARED_LIBRARY)
 
-# IMS
+# RIL
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := MediaBuffer.c
-LOCAL_SHARED_LIBRARIES := libstagefright_foundation
-LOCAL_MODULE := libshim_ims
+LOCAL_SRC_FILES := sensor.cpp
+LOCAL_SHARED_LIBRARIES := libgui
+LOCAL_MODULE := libshim_ril
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_SHARED_LIBRARY)
+

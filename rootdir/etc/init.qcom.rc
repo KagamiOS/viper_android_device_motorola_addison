@@ -53,7 +53,7 @@ on fs
 
 on init
     # Symbols required for motorola blobs
-    export LD_SHIM_LIBS /system/vendor/lib/libmot_gpu_mapper.so|libshim_camera.so:/system/vendor/lib/lib-imsvt.so|libshim_ims.so:/system/bin/adspd|libshim_adsp.so
+    export LD_SHIM_LIBS /system/bin/adspd|libshim_adsp.so:/system/vendor/lib/libmot_gpu_mapper.so|libshim_camera.so:/system/lib/libandroid.so|libshim_ril.so
 
     write /sys/module/qpnp_rtc/parameters/poweron_alarm 1
 
@@ -115,6 +115,10 @@ on boot
     chown radio radio /data/misc/radio/copy_complete
     chmod 0660 /data/misc/radio/copy_complete
 
+    # copy prebuilt qcril.db files always
+    copy /system/vendor/qcril.db /data/misc/radio/qcril_prebuilt.db
+    chown radio radio /data/misc/radio/qcril_prebuilt.db
+    chmod 0660 /data/misc/radio/qcril_prebuilt.db
     # File flags for prebuilt ril db file
     write /data/misc/radio/prebuilt_db_support 1
     chown radio radio /data/misc/radio/prebuilt_db_support
@@ -161,28 +165,6 @@ on boot
     write /proc/sys/net/core/rmem_max  8388608
     write /proc/sys/net/core/wmem_max  8388608
 
-    #To allow interfaces to get v6 address when tethering is enabled
-    write /proc/sys/net/ipv6/conf/rmnet0/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet1/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet2/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet3/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet4/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet5/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet6/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet7/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_sdio0/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_sdio1/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_sdio2/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_sdio3/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_sdio4/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_sdio5/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_sdio6/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_sdio7/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_usb0/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_usb1/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_usb2/accept_ra 2
-    write /proc/sys/net/ipv6/conf/rmnet_usb3/accept_ra 2
-
     # To prevent out of order acknowledgements from making
     # connection tracking to treat them as not belonging to
     # the connection they belong to.
@@ -197,8 +179,8 @@ on boot
     # bond0 used by FST Manager
     chown wifi wifi /sys/class/net/bond0/bonding/queue_id
 
-    # FPC home button permissions
-    chown system system /sys/homebutton/enable
+    # FPC button permissions
+    chown system system /sys/bus/spi/devices/spi8.0/key_enable
 
     # Display
     chown system graphics /sys/class/graphics/fb1/hpd
@@ -406,6 +388,12 @@ service perfd /system/vendor/bin/perfd
    socket perfd seqpacket 0666 root system
    writepid /dev/cpuset/system-background/tasks
 
+service energy-awareness /system/bin/energy-awareness
+    class main
+    user root
+    group system
+    oneshot
+
 service qseecomd /system/bin/qseecomd
    class core
    user root
@@ -420,7 +408,7 @@ service thermal-engine /system/vendor/bin/thermal-engine
    group root
 
 service time_daemon /system/bin/time_daemon
-   class late_start
+   class main
    user root
    group root
 
@@ -507,7 +495,7 @@ service tftp_server /system/bin/tftp_server
 service per_mgr /system/bin/pm-service
     class core
     user system
-    group system net_raw
+    group system
 
 service per_proxy /system/bin/pm-proxy
     class core
@@ -527,8 +515,23 @@ service config_bt_addr /system/bin/btnvtool -O
     group bluetooth radio
     oneshot
 
+service hciattach /system/bin/sh /system/etc/init.qcom.bt.sh
+    class late_start
+    user bluetooth
+    group bluetooth net_bt_admin
+    disabled
+    oneshot
+
+on property:bluetooth.hciattach=true
+    start hciattach
+
+on property:bluetooth.hciattach=false
+    setprop bluetooth.status off
+
 service netmgrd /system/bin/netmgrd
     class main
+    user root
+    group root wifi wakelock radio inet
 
 service ipacm-diag /system/bin/ipacm-diag
     class main
@@ -544,7 +547,7 @@ service ipacm /system/bin/ipacm
 service qti /system/vendor/bin/qti
     class main
     user radio
-    group radio net_raw qcom_diag usb net_admin
+    group radio qcom_diag usb
 
 on property:ro.use_data_netmgrd=false
     # netmgr not supported on specific target
@@ -623,6 +626,11 @@ service msm_irqbalance /system/bin/msm_irqbalance -f /system/vendor/etc/msm_irqb
     class core
     user root
     group root
+
+service loc_launcher /system/bin/loc_launcher
+    #loc_launcher will start as root and set its uid to gps
+    class late_start
+    group gps inet qcom_diag wifi
 
 on charger
     wait /dev/block/bootdevice/by-name/system
@@ -704,18 +712,15 @@ on property:sys.boot_completed=1
     # Log kernel wake-up source
     write /sys/module/msm_show_resume_irq/parameters/debug_mask 1
 
-    #Reset read ahead for dm-1 to 128KB
-    write /sys/block/dm-1/queue/read_ahead_kb 128
-    #Reset the "read ahead" setting for system patition
-    # result: ext4: 32KB, dm_verity:64KB, block layer: 128KB
-    write /sys/fs/ext4/dm-0/inode_readahead_blks 8
     write /sys/module/dm_verity/parameters/prefetch_cluster 65536
-
     write /sys/block/mmcblk0/bdi/read_ahead_kb 128
     write /sys/block/mmcblk0/queue/read_ahead_kb 128
     write /sys/block/dm-0/queue/read_ahead_kb 128
-    write /sys/block/dm-1/queue/read_ahead_kb 128
+
     #WDSP FW boot sysfs node used by STHAL
     chown media audio /sys/kernel/wdsp0/boot
+    #CPE fw_name used by sound trigger HAL
+    chown media audio /sys/kernel/wcd_cpe0/fw_name
+
     rm /data/system/perfd/default_values
     start perfd
